@@ -1,21 +1,29 @@
 import {
-    ChatSession,
     GenerateContentResult,
     GenerativeModel,
     GoogleGenerativeAI,
     ModelParams,
     Part,
+    StartChatParams,
 } from '@google/generative-ai'
 
-export interface RequestMedia {
+import { ChatHistoryContent } from 'lib/records'
+
+interface RequestMedia {
     data: string,
     mimeType: string,
 }
 
+interface GeneratedResponse {
+    contentResult: GenerateContentResult
+    history: ChatHistoryContent[]
+}
+
 class Gemini {
     model: GenerativeModel
+    history?: ChatHistoryContent[]
 
-    constructor() {
+    constructor(history?: ChatHistoryContent[]) {
         const apiKey: string | undefined = process.env.GEMINI_API_KEY
 
         if (!apiKey) {
@@ -29,9 +37,32 @@ class Gemini {
         }
 
         this.model = g.getGenerativeModel(modelParams)
+        this.history = history
     }
 
-    async generateContent(prompt: string, media?: RequestMedia): Promise<GenerateContentResult> {
+    async generateContent(prompt: string, media?: RequestMedia): Promise<GeneratedResponse> {
+
+        /*
+         * Generate a new chat session, pre-filled with any history
+         * from this thread.
+         *
+         */
+
+        let chatParams: StartChatParams = {}
+
+        if (this.history) {
+            chatParams = {
+                history: this.history
+            }
+        }
+
+        const chat = this.model.startChat(chatParams)
+
+        /*
+         * Assemble the request.
+         *
+         */
+
         let imagePart: Part | null = null
 
         if (media) {
@@ -43,22 +74,31 @@ class Gemini {
             }
         }
 
-        const sanitizedPrompt: string = prompt + ' (Please keep the response less than 3000 characters)'
-
         const contentArgs = (imagePart)
-            ? [sanitizedPrompt, imagePart]
-            : sanitizedPrompt
+            ? [prompt, imagePart]
+            : prompt
 
-        const result = this.model.generateContent(contentArgs)
+        const result = await chat.sendMessage(contentArgs)
 
-        return result
-    }
+        /*
+         * Get the history of the chat session so we can update the database.
+         *
+         */
 
-    async startChatSession(): Promise<ChatSession> {
-        const session = this.model.startChat()
+        const history = await chat.getHistory()
 
-        return session
+        const response: GeneratedResponse = {
+            contentResult: result,
+            history,
+        }
+
+        return response
     }
 }
 
 export default Gemini
+
+export {
+    GeneratedResponse,
+    RequestMedia,
+}

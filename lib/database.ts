@@ -1,9 +1,11 @@
 import MueckContext from 'lib/context'
 
 import {
+    ChatHistoryContent,
+    SlackChatRecord,
     SlackClientRecord,
-    SlackIntegrationRecord,
     SlackEventRecord,
+    SlackIntegrationRecord,
 } from 'lib/records'
 
 /*
@@ -237,7 +239,54 @@ async function saveIntegration(
     return integrationRecord
 }
 
-async function getIntegrationByAppId(context: MueckContext, appId: string): Promise<SlackIntegrationRecord> {
+async function getIntegrationById(context: MueckContext, slackIntegrationId: number): Promise<SlackIntegrationRecord | null> {
+    const query = `
+        SELECT
+            id,
+            account_id,
+            slack_client_id,
+            team_id,
+            team_name,
+            bot_user_id,
+            app_id,
+            access_token,
+            created
+        FROM
+            slack_integration
+        WHERE
+            id = $1
+    `
+
+    const values = [
+        slackIntegrationId,
+    ]
+
+    const cursor = await context.pool.query(query, values)
+
+    let integration: SlackIntegrationRecord | null = null
+
+    cursor.rows.forEach((row: any) => {
+        integration = {
+            id: row.id,
+            accountId: row.account_id,
+            slackClientId: row.slack_client_id,
+            teamId: row.team_id,
+            teamName: row.team_name,
+            botUserId: row.bot_user_id,
+            appId: row.app_id,
+            accessToken: row.access_token,
+            created: row.created,
+        }
+    })
+
+    if (!integration) {
+        return null
+    }
+
+    return integration
+}
+
+async function getIntegrationByAppId(context: MueckContext, appId: string): Promise<SlackIntegrationRecord | null> {
     const query = `
         SELECT
             id,
@@ -278,7 +327,7 @@ async function getIntegrationByAppId(context: MueckContext, appId: string): Prom
     })
 
     if (!integration) {
-        throw new Error('Failed to find integration')
+        return null
     }
 
     return integration
@@ -386,14 +435,144 @@ async function markEventAsProcessed(context: MueckContext, slackEventId: number)
     await context.pool.query(query, values)
 }
 
+async function saveSlackChat(context: MueckContext, integrationId: number, channelId: string, timestamp: string): Promise<SlackChatRecord> {
+    const query = `
+        INSERT INTO
+            slack_chat
+        (
+            slack_integration_id,
+            channel_id,
+            thread_ts,
+            created
+        ) VALUES (
+            $1,
+            $2,
+            $3,
+            NOW()
+        )
+        RETURNING
+            id,
+            created
+    `
+
+    const values = [
+        integrationId,
+        channelId,
+        timestamp,
+    ]
+
+    const cursor = await context.pool.query(query, values)
+
+    let chat: SlackChatRecord = {
+        id: 0,
+        slackIntegrationId: integrationId,
+        channelId,
+        timestamp,
+        rounds: [],
+        created: '',
+    }
+
+    cursor.rows.forEach((row: any) => {
+        chat.id = row.id
+        chat.created = row.created
+    })
+
+    if (!chat.id) {
+        throw new Error('Failed to save chat')
+    }
+
+    return chat
+}
+
+async function getSlackChat(context: MueckContext, slackIntegrationId: number, channelId: string, timestamp: string): Promise<SlackChatRecord> {
+    const query = `
+        SELECT
+            sc.id,
+            sc.slack_integration_id,
+            sc.channel_id,
+            sc.thread_ts,
+            scr.id AS round_id,
+            scr.round,
+            sc.created
+        FROM
+            slack_chat sc
+        LEFT JOIN
+            slack_chat_round scr ON sc.id = scr.slack_chat_id
+        WHERE
+            sc.slack_integration_id = $1 AND
+            sc.channel_id = $2 AND
+            sc.thread_ts = $3
+    `
+
+    const values = [
+        slackIntegrationId,
+        channelId,
+        timestamp,
+    ]
+
+    const cursor = await context.pool.query(query, values)
+
+    let chat: SlackChatRecord = {
+        id: 0,
+        slackIntegrationId,
+        channelId,
+        timestamp,
+        rounds: [],
+        created: new Date().toISOString(),
+    }
+
+    cursor.rows.forEach((row: any) => {
+        chat.id = row.id
+        chat.created = row.created
+
+        if (row.round_id) {
+            chat.rounds.push({
+                id: row.round_id,
+                slackChatId: row.id,
+                round: row.round,
+                created: row.created,
+            })
+        }
+    })
+
+    return chat
+}
+
+async function saveSlackChatRound(context: MueckContext, slackChatId: number, round: ChatHistoryContent): Promise<void> {
+    const query = `
+        INSERT INTO
+            slack_chat_round
+        (
+            slack_chat_id,
+            round,
+            created
+        ) VALUES (
+            $1,
+            $2,
+            NOW()
+        )
+    `
+
+    const values = [
+        slackChatId,
+        JSON.stringify(round),
+    ]
+
+    await context.pool.query(query, values)
+}
+
 export {
     saveAuthorizationState,
     redeemAuthorizationState,
     getSlackClientById,
     getSlackClientByAuthorizationState,
     saveIntegration,
+    getIntegrationById,
     getIntegrationByAppId,
     saveEvent,
     getNextUnprocessedEvent,
     markEventAsProcessed,
+    saveSlackChat,
+    getSlackChat,
+    saveSlackChatRound,
 }

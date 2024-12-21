@@ -1,6 +1,6 @@
 import MueckContext from 'lib/context'
 
-import { saveIntegration, getIntegrationByAppId } from 'lib/database'
+import { saveIntegration, getIntegrationById, getIntegrationByAppId } from 'lib/database'
 import { SlackIntegrationRecord } from 'lib/records'
 
 class SlackIntegration {
@@ -51,6 +51,16 @@ class SlackIntegration {
         this.record = slackIntegrationRecord
     }
 
+    static async fromId(context: MueckContext, slackIntegrationId: number): Promise<SlackIntegration> {
+        const integrationRecord = await getIntegrationById(context, slackIntegrationId)
+
+        if (!integrationRecord) {
+            throw new Error('Failed to find integration')
+        }
+
+        return new this(context, integrationRecord)
+    }
+
     static async fromAppId(context: MueckContext, appId: string): Promise<SlackIntegration> {
         const integrationRecord = await getIntegrationByAppId(context, appId)
 
@@ -58,10 +68,7 @@ class SlackIntegration {
             throw new Error('Failed to find integration')
         }
 
-        return new SlackIntegration(
-            context,
-            integrationRecord,
-        )
+        return new this(context, integrationRecord)
     }
 
     async createIntegration(): Promise<void> {

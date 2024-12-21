@@ -8,7 +8,11 @@ import {
     markEventAsProcessed,
 } from 'lib/database'
 
-import { SlackEventRecord } from 'lib/records'
+import {
+    GeneratedResponse,
+} from 'lib/gemini'
+
+import { SlackEventRecord, ChatHistoryContent } from 'lib/records'
 
 interface SummarizedSlackEvent {
     prompt: string
@@ -85,18 +89,18 @@ class SlackEvent {
         await saveEvent(this.context, this.slackIntegrationId, this.event)
     }
 
-    async processEvent(): Promise<string> {
+    async processEvent(history: ChatHistoryContent[]): Promise<GeneratedResponse> {
         const summarizedEvent: SummarizedSlackEvent = this.summarizeEventText()
 
         console.log('Summarized event:', summarizedEvent.prompt)
 
-        const gemini = new Gemini()
+        const gemini = new Gemini(history)
         const response = await gemini.generateContent(summarizedEvent.prompt)
-        const responseText = response.response.text()
+        const responseText = response.contentResult.response.text()
 
         console.log('Gemini response text:', responseText)
 
-        return responseText
+        return response
     }
 
     summarizeEventText(): SummarizedSlackEvent {

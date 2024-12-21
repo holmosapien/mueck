@@ -2,6 +2,7 @@ import MueckContext from 'lib/context'
 import MueckDatabasePool from 'lib/pool'
 import SlackChat from 'lib/slack/chat'
 import SlackEvent from 'lib/slack/event'
+import SlackIntegration from 'lib/slack/integration'
 
 const pool = new MueckDatabasePool()
 
@@ -20,16 +21,29 @@ const worker = async () => {
                 api_app_id: appId,
                 event: {
                     channel,
-                    event_ts: eventTs,
-                    thread_ts: threadTs,
+                    event_ts: eventTimestamp,
+                    thread_ts: threadTimestamp,
                 },
             } = event.event
 
-            const response = await event.processEvent()
-            const chat = new SlackChat(context)
-            const parent = threadTs || eventTs
+            const integration = await SlackIntegration.fromAppId(context, appId)
 
-            const success = await chat.sendMessage(appId, channel, parent, response)
+            if (!integration) {
+                console.error('Failed to find integration')
+
+                await event.markEventAsProcessed()
+
+                continue
+            }
+
+            const timestamp = threadTimestamp || eventTimestamp
+
+            const chat = await SlackChat.fromTimestamp(context, integration, channel, timestamp)
+            const chatResponse = await event.processEvent(chat.history)
+            const responseText = chatResponse.contentResult.response.text()
+            const success = await chat.sendMessage(responseText)
+
+            await chat.updateHistory(chatResponse)
 
             if (success) {
                 await event.markEventAsProcessed()

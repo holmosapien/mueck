@@ -49,3 +49,18 @@ CREATE TABLE slack_event (
     created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     processed TIMESTAMP
 );
+
+CREATE TABLE slack_chat (
+    id SERIAL PRIMARY KEY,
+    slack_integration_id INTEGER NOT NULL,
+    channel_id VARCHAR(64) NOT NULL,
+    thread_ts VARCHAR(64) NOT NULL,
+    created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE slack_chat_round (
+    id SERIAL PRIMARY KEY,
+    slack_chat_id INTEGER NOT NULL,
+    round JSONB NOT NULL,
+    created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

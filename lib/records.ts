@@ -1,3 +1,5 @@
+import { Content } from '@google/generative-ai'
+
 interface SlackClientRecord {
     id: number
     apiClientId: string
@@ -32,9 +34,29 @@ interface SlackEventRecord {
     processed: string | null
 }
 
+interface SlackChatRecord {
+    id: number
+    slackIntegrationId: number
+    channelId: string
+    timestamp: string
+    rounds: SlackChatRoundRecord[]
+    created: string
+}
+
+interface SlackChatRoundRecord {
+    id: number
+    slackChatId: number
+    round: Content
+    created: string
+}
+
 export {
+    Content as ChatHistoryContent,
+
     SlackClientRecord,
     AuthorizationStateRecord,
     SlackIntegrationRecord,
     SlackEventRecord,
+    SlackChatRecord,
+    SlackChatRoundRecord,
 }
